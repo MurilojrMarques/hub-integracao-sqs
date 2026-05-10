@@ -24,7 +24,7 @@ class UpdateTagsRequest extends FormRequest
     {
         return [
             'tags' => ['required', 'array', 'min:1'],
-            'tags.*' => ['string', 'max:50'],
+            'tags.*' => ['required', 'string', 'alpha_dash', 'max:30'],
         ];
     }
 
