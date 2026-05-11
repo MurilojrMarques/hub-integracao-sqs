@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Product;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Override;
 use Tests\TestCase;
 
@@ -96,5 +97,20 @@ class ProductUpdateApiTest extends TestCase
     {
         $this->patchJson('/api/products/{$this->product->sku}/tags', ['tags' => ['tag com espaço']])
             ->assertStatus(422);
+    }
+
+    public function test_controller_dispatches_job_with_valid_data(): void
+    {
+        Queue::fake();
+
+        $payload = ['price' => 850.50];
+        $this->patchJson("/api/products/{$this->product->sku}/price", $payload)
+            ->assertStatus(202);
+
+        Queue::assertPushed(\App\Jobs\ProductUpdateJob::class, function ($job) use ($payload) {
+            return $job->sku === $this->product->sku 
+                && $job->type === \App\Enums\ProductUpdateType::PRICE
+                && $job->data['price'] === $payload['price'];
+        });
     }
 }

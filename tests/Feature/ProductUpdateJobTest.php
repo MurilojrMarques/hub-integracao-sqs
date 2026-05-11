@@ -34,9 +34,6 @@ class ProductUpdateJobTest extends TestCase
     {
         $skuInvalido = 'SKU-INVALIDO';
 
-        $this->expectException(\Exception::class);
-        $this->expectExceptionMessage("O produto não foi encontrado.");
-
         $job = new ProductUpdateJob(
             $skuInvalido, 
             ProductUpdateType::PRICE, 
@@ -44,6 +41,10 @@ class ProductUpdateJobTest extends TestCase
         );
         
         $job->handle(); 
+
+        $this->assertDatabaseMissing('products', [
+            'sku' => $skuInvalido
+        ]);
     }
 
     public function test_job_generates_correct_unique_id_for_idempotency(): void
