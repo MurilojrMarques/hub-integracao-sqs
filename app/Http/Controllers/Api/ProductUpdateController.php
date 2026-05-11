@@ -9,6 +9,7 @@ use App\Http\Requests\UpdateStockRequest;
 use App\Http\Requests\UpdateDescriptionRequest;
 use App\Http\Requests\UpdateImagesRequest;
 use App\Http\Requests\UpdateTagsRequest;
+use App\Jobs\ProductUpdateJob;
 use Illuminate\Http\JsonResponse;
 
 class ProductUpdateController extends Controller
@@ -39,8 +40,8 @@ class ProductUpdateController extends Controller
     }
 
     private function dispatchUpdate(string $sku, ProductUpdateType $type, array $data): JsonResponse
-    {
-        // ProductUpdateJob::dispatch($sku, $type, $data);
+    {   
+        ProductUpdateJob::dispatch($sku, $type, $data);
 
         return response()->json([
             'status' => 'success',
