@@ -57,4 +57,22 @@ class ProductUpdateJobTest extends TestCase
 
         $this->assertEquals($expectedId, $job->uniqueId());
     }
+
+    public function test_job_duplication(): void
+    {
+        $product = Product::factory()->create(['stock' => 10]);
+        $novoEstoque = 50;
+
+        $job = new ProductUpdateJob($product->sku, ProductUpdateType::STOCK, ['stock' => $novoEstoque]);
+
+        $job->handle();
+        $job->handle();
+
+        $this->assertDatabaseCount('products', 1);
+
+        $this->assertDatabaseHas('products', [
+            'sku' => $product->sku,
+            'stock' => $novoEstoque,
+        ]);
+    }
 }

@@ -113,4 +113,29 @@ class ProductUpdateApiTest extends TestCase
                 && $job->data['price'] === $payload['price'];
         });
     }
+
+    public function test_api_blocks_sql_injection_attempts_via_validation(): void
+    {
+        $maliciousPayload = [
+            'price' => "100; DROP TABLE products; --"
+        ];
+        
+        $this->patchJson("/api/products/{$this->product->sku}/price", $maliciousPayload)
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['price']);
+    }
+
+    public function test_api_blocks_too_many_requests(): void
+    {
+        $payload = ['price' => 150.00];
+        $url = "/api/products/{$this->product->sku}/price";
+
+        for ($i = 0; $i < 600; $i++) {
+            $this->patchJson($url, $payload)->assertStatus(202);
+        }
+
+        $this->patchJson($url, $payload)
+            ->assertStatus(429)
+            ->assertHeader('X-RateLimit-Remaining', 0);
+    }
 }
