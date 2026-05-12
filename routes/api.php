@@ -15,3 +15,11 @@ Route::prefix('products/{sku}')->group(function () {
     Route::patch('/images', [ProductUpdateController::class, 'updateImages']);
     Route::patch('/tags', [ProductUpdateController::class, 'updateTags']);
 });
+
+Route::middleware('throttle:600,1')->group(function(){
+    Route::patch('/products/{sku}/price', [ProductUpdateController::class, 'updatePrice']);
+    Route::patch('/products/{sku}/stock', [ProductUpdateController::class, 'updateStock']);
+    Route::patch('/products/{sku}/description', [ProductUpdateController::class, 'updateDescription']);
+    Route::patch('/products/{sku}/images', [ProductUpdateController::class, 'updateImages']);
+    Route::patch('/products/{sku}/tags', [ProductUpdateController::class, 'updateTags']);
+});
