@@ -1,58 +1,188 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# HUB de Integração SQS
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+API construída em Laravel 11 para recebimento e processamento assíncrono de atualizações de produtos (estoque, preço, descrição, imagens e tags) via Amazon SQS.
 
-## About Laravel
+Este projeto foi desenhado com foco em alta disponibilidade e resiliência, simulando um ambiente real de e-commerce onde integrações de ERPs disparam milhares de requisições por minuto.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+---
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+# Decisões de Arquitetura
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+Para garantir a estabilidade do servidor durante picos de tráfego, algumas decisões arquiteturais foram tomadas:
 
-## Learning Laravel
+- **Segurança e Autenticação:**  
+  A API é estritamente protegida utilizando Laravel Sanctum (Bearer Tokens). Apenas sistemas autorizados (ERPs integrados) com tokens válidos conseguem interagir com os endpoints.
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+- **Processamento Assíncrono (Status 202):**  
+  A API atua apenas como um "mensageiro". Ela valida a integridade do payload e despacha a tarefa para a AWS SQS, retornando `202 Accepted`. O banco de dados não é consultado na requisição principal, evitando gargalos de I/O.
 
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+- **Idempotência:**  
+  O sistema de filas garante que o mesmo payload não seja processado duas vezes. Foi implementada uma trava (`ShouldBeUnique`) gerando um hash MD5 baseado no SKU, tipo de atualização e dados enviados.
 
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
+- **Tolerância a Falhas e Logs:**  
+  Jobs que falham devido a regras de negócio (ex: SKU não encontrado) são tentados 3 vezes com `backoff` exponencial. Após isso, são direcionados para a tabela `failed_jobs` e um alerta crítico é gravado nos logs da aplicação para análise da equipe de infraestrutura.
 
-## Agentic Development
+- **Rate Limiting:**  
+  As rotas da API estão protegidas pelo middleware `throttle` (`600 requisições/minuto`) para evitar que falhas em ERPs de clientes causem DDoS interno no HUB.
 
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+- **Prevenção de Injeção:**  
+  O framework lida com a proteção de SQL Injection nativamente via Eloquent, reforçado por regras estritas nos `FormRequests` que tipam e limitam os dados de entrada.
+
+---
+
+# Pré-requisitos
+
+- Docker e Docker Compose instalados.
+- Conta na AWS com uma fila SQS criada e chaves de acesso (IAM) geradas.
+
+---
+
+# Como configurar e rodar o projeto
+
+## 1. Clone o repositório
 
 ```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+git clone https://github.com/seu-usuario/hub-integracao-sqs.git
+cd hub-integracao-sqs
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+---
 
-## Contributing
+## 2. Crie o arquivo de ambiente
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+```bash
+cp .env.example .env
+```
 
-## Code of Conduct
+Preencha as credenciais da AWS SQS no arquivo `.env`:
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+```env
+AWS_ACCESS_KEY_ID=sua_chave
+AWS_SECRET_ACCESS_KEY=seu_secret
+AWS_DEFAULT_REGION=us-east-1
+SQS_PREFIX=sua_url_base_sqs
+SQS_QUEUE=sua_url_completa_da_fila
+```
 
-## Security Vulnerabilities
+---
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+## 3. Suba os containers Docker
 
-## License
+```bash
+docker-compose up -d
+```
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+---
+
+## 4. Instale as dependências e gere a chave da aplicação
+
+```bash
+docker exec -it hub-irroba-app composer install
+
+docker exec -it hub-irroba-app php artisan key:generate
+```
+
+---
+
+## 5. Rode as migrations e popule o banco
+
+```bash
+docker exec -it hub-irroba-app php artisan migrate --seed
+```
+
+---
+
+# Gerando o Token de Autenticação (Bearer Token)
+
+Para consumir a API, é necessário gerar um token de acesso para simular o sistema ERP.
+
+## Abra o Tinker do Laravel
+
+```bash
+docker exec -it hub-irroba-app php artisan tinker
+```
+
+## Crie um usuário de integração e gere o token
+
+```php
+$user = App\Models\User::create([
+    'name' => 'Irroba',
+    'email' => 'irroba@teste.com',
+    'password' => bcrypt('senha123')
+]);
+
+echo $user->createToken('TokenERP')->plainTextToken;
+```
+
+Copie o token gerado no terminal e utilize-o no header:
+
+```http
+Authorization: Bearer {token}
+```
+
+Ou utilize diretamente na interface do Swagger.
+
+Para sair do Tinker:
+
+```bash
+exit
+```
+
+---
+
+# Iniciando as Filas e Agendamentos
+
+## Iniciar o Worker da fila SQS
+
+> Altere o nome da fila caso utilize outra configuração.
+
+```bash
+docker exec -it hub-irroba-app php artisan queue:work sqs --queue=hub-irroba-produtos
+```
+
+---
+
+## Rodar agendamentos manualmente (Opcional)
+
+A aplicação possui rotinas agendadas para limpeza de falhas e logs.
+
+```bash
+docker exec -it hub-irroba-app php artisan schedule:run
+```
+
+---
+
+# Testes Automatizados
+
+A aplicação possui testes cobrindo:
+
+- Validações da API
+- Segurança contra injeção de dados
+- Despacho de filas (`Queue::fake`)
+- Idempotência
+
+Execute a suíte de testes:
+
+```bash
+docker exec -it hub-irroba-app php artisan test
+```
+
+---
+
+# Documentação da API (Swagger)
+
+A documentação interativa da API foi gerada utilizando OpenAPI/Swagger.
+
+## Gerar ou atualizar a documentação
+
+```bash
+docker exec -it hub-irroba-app php artisan l5-swagger:generate
+```
+
+## Acessar a documentação
+
+```txt
+http://localhost:8000/api/documentation
+```
+
+---
