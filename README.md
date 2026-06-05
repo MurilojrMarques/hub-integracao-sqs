@@ -42,7 +42,7 @@ Para garantir a estabilidade do servidor durante picos de tráfego, algumas deci
 ## 1. Clone o repositório
 
 ```bash
-git clone https://github.com/seu-usuario/hub-integracao-sqs.git
+git clone https://github.com/MuriloJrMarques/hub-integracao-sqs.git
 cd hub-integracao-sqs
 ```
 
